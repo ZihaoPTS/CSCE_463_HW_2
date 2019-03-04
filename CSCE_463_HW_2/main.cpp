@@ -9,7 +9,7 @@ void makeDNSquestion(char* buf, char* host) {
 		if (host_ptr[counter] == '.') {
 			buf_ptr[0] = char(counter);
 			buf_ptr += (counter+1);
-			host_ptr += (counter+1);
+			host_ptr += (counter+1); 
 			counter = 0;
 		}
 		else if (host_ptr[counter] == '\0'){
@@ -29,7 +29,7 @@ void makeDNSquestion(char* buf, char* host) {
 }
 
 void makeRDNSquestion(char* buf, char* host) {
-
+	return;
 }
 
 int main(int argc, char** argv) {
