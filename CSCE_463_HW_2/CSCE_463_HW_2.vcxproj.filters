@@ -18,7 +18,7 @@
     <ClInclude Include="stdafx.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="mysocket.h">
+    <ClInclude Include="struct.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

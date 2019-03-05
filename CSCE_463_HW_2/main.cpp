@@ -34,28 +34,28 @@ void printQType(u_short qT) {
 	default:
 		break;
 	case DNS_A:
-		printf(" DNS_A ");
+		printf(" A ");
 		break;
 	case DNS_NS:
-		printf(" DNS_NS ");
+		printf(" NS ");
 		break;
 	case DNS_CNAME:
-		printf(" DNS_CNAME ");
+		printf(" CNAME ");
 		break;
 	case DNS_PTR:
-		printf(" DNS_PTR ");
+		printf(" PTR ");
 		break;
 	case DNS_HINFO:
-		printf(" DNS_HINFO ");
+		printf(" HINFO ");
 		break;
 	case DNS_MX:
-		printf(" DNS_MX ");
+		printf(" MX ");
 		break;
 	case DNS_AXFR:
-		printf(" DNS_AXFR ");
+		printf(" AXFR ");
 		break;
 	case DNS_ANY:
-		printf(" DNS_ANY ");
+		printf(" ANY ");
 		break;
 	}
 	
@@ -90,56 +90,54 @@ u_char* jumpNoutput(u_char* answer) { // returning a pointer at next answer
 				printf("%c", answer[curPos]);
 				curPos++;
 			}
+			printf(".");
 		}
 
 	}
 	
 	//compute FixedRR, print Qtype
-	ans += (curPos + 1);
+	ans += (curPos+2);
 	FixedRR* frr = (FixedRR*)ans;
 	ans = (u_char*)(frr + 1);
-	printQType(frr->qT);
-	
-	//print answer
-	if(frr->qT == DNS_A) //print ip adderss
-		for (int i = 0; i < frr->len; i++) {
-			printf("%d.", ans[i]);
-		}
-	else { //print name
-		curPos = 0;
-		while (true) {
-			if (ans[curPos] >= 0xc0) {
-				off = ((ans[curPos] & 0x3F) << 8) + ans[curPos + 1];
-				curPos += off;
-				pnj = curPos + 2;
-				jumped = true;
-			}
-			else if (ans[curPos] == 0) {
-				if (jumped){
-					curPos = pnj;
-					jumped = false;
-				}
-				else
-					break;
-			}
-			else {
-				int count = ans[curPos];
-				curPos += 1;
-				for (int i = 0; i < count; i++) {
-					printf("%c", ans[curPos]);
-					curPos++;
-				}
-			}
-
-		}
-	}
-	//print rest of Fixed RR
-	
-	
-	//compute return address
+	printQType(ntohs(frr->qT));
 	return ans;
 }
 
+u_char* printQuestion(u_char* question) {
+	u_char* answer = question;
+	int curPos = 0;
+	int off = 0;
+	int pnj = 0;
+	bool jumped = false;
+	while (true) {
+		if (answer[curPos] >= 0xc0) {
+			off = ((answer[curPos] & 0x3F) << 8) + answer[curPos + 1];
+			curPos += off;
+			pnj = curPos + 2;
+			jumped = true;
+		}
+		else if (answer[curPos] == 0) {
+			if (jumped) {
+				curPos = pnj;
+				jumped = false;
+			}
+			else
+				break;
+		}
+		else {
+			int count = answer[curPos];
+			curPos += 1;
+			for (int i = 0; i < count; i++) {
+				printf("%c", answer[curPos]);
+				curPos++;
+			}
+			printf(".");
+		}
+
+	}
+	answer += (curPos+1);
+	return answer;
+}
 
 void makeRDNSquestion(char* buf, char* host) {
 	return;
@@ -150,7 +148,6 @@ int main(int argc, char** argv) {
 	//argv[2] : DNS server IP
 
 	WSADATA wsaData;
-
 	//Initialize WinSock; once per program run
 	WORD wVersionRequested = MAKEWORD(2, 2);
 	if (WSAStartup(wVersionRequested, &wsaData) != 0) {
@@ -165,19 +162,32 @@ int main(int argc, char** argv) {
 	}
 
 	u_short QueryType;
-
+	char* question;
 	DWORD IP = inet_addr(argv[1]);
 	if (IP == INADDR_NONE)
 	{
 		//Not a IP
 		//Query Type A
 		QueryType = DNS_A;
+		question = argv[1];
 	}
 	else
 	{
 		//Is a IP
 		//Query Type PTR
-		QueryType = DNS_PTR;
+		QueryType = DNS_PTR;//inet_ntoa
+
+		DWORD test = htonl(inet_addr(argv[1]));
+		struct sockaddr_in addr;
+		addr.sin_addr.S_un.S_addr = test;
+
+		question = new char[strlen(argv[1]) + strlen(".in-addr.arpa")+1];
+		memcpy(question, inet_ntoa(addr.sin_addr), strlen(inet_ntoa(addr.sin_addr)));
+		int curPos = strlen(inet_ntoa(addr.sin_addr));
+		memcpy(question + curPos, ".in-addr.arpa", strlen(".in-addr.arpa"));
+		question[strlen(argv[1]) + strlen(".in-addr.arpa")] = '\0';
+
+		printf("%s\n", question);
 	}
 
 	SOCKET SendSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -228,14 +238,12 @@ int main(int argc, char** argv) {
 	remote.sin_family = AF_INET;
 	remote.sin_addr.s_addr = inet_addr(argv[2]); // server
 	remote.sin_port = htons(53);
-	if (sendto(SendSocket, buf, pkt_size, 0, (struct sockaddr*)&remote, sizeof(remote)) == SOCKET_ERROR) {
-		printf("sendto() generated error %d\n", WSAGetLastError());
-		if (closesocket(SendSocket) == SOCKET_ERROR) {
-			printf("recvfrom() generated error %d\n", WSAGetLastError());
-		}
-		WSACleanup();
-		exit(0);
-	}
+	
+
+	printf("Lookup: %s\n",question);
+	printf("Query : %s, type %d, TXID %X\n",question,QueryType,fdh->ID);
+	printf("Server : %s\n",argv[2]);
+	printf("********************************\n");
 
 	char* recv_buf = new char[MAX_DNS_LEN];
 	struct sockaddr_in RecvAddr;
@@ -243,6 +251,17 @@ int main(int argc, char** argv) {
 	int count = 0;
 	while (count++ < MAX_ATTEMPTS)
 	{
+		clock_t t1, t2;
+		t1 = clock();
+		printf("Attempt %d with %d bytes...",count,pkt_size);
+		if (sendto(SendSocket, buf, pkt_size, 0, (struct sockaddr*)&remote, sizeof(remote)) == SOCKET_ERROR) {
+			printf("sendto() generated error %d\n", WSAGetLastError());
+			if (closesocket(SendSocket) == SOCKET_ERROR) {
+				printf("recvfrom() generated error %d\n", WSAGetLastError());
+			}
+			WSACleanup();
+			exit(0);
+		}
 		timeval timeout;
 		timeout.tv_sec = 10;
 		timeout.tv_usec = 0;
@@ -263,20 +282,36 @@ int main(int argc, char** argv) {
 				WSACleanup();
 				exit(0);
 			}
-			printf("size received: %d\n",size);
+			t2 = clock();
+			float diff((float)t2 - (float)t1);
+			float seconds = diff / CLOCKS_PER_SEC;
+			printf("\tresponse in %.3f s with %d bytes\n", seconds,size);
 			// parse the response
 			break;
 		}
 		else if (available == 0) {
 			// report timeout
-			printf("\tSelect timeout\n");
+			t2 = clock();
+			float diff((float)t2 - (float)t1);
+			float seconds = diff / CLOCKS_PER_SEC;
+			printf("\ttimeout in %.3f s\n",seconds);
+
 			break;
 		}
 		else {
 			printf("\tSelect error: %d\n", WSAGetLastError());
-			break;
+			if (closesocket(SendSocket) == SOCKET_ERROR) {
+				printf("recvfrom() generated error %d\n", WSAGetLastError());
+			}
+			WSACleanup();
+			exit(0);
 		}
-		printf("Max Attempt Reached. No select evoke successfully\n");
+		printf("Max Attempt Reached. No select evoke successfully. Exiting Program\n");
+		if (closesocket(SendSocket) == SOCKET_ERROR) {
+			printf("recvfrom() generated error %d\n", WSAGetLastError());
+		}
+		WSACleanup();
+		exit(0);
 	}
 	// some error checking here
 
@@ -288,39 +323,34 @@ int main(int argc, char** argv) {
 
 	if (RecvAddr.sin_addr.s_addr != remote.sin_addr.s_addr || RecvAddr.sin_port != remote.sin_port){
 		printf("Reply address did not match send address. Exit\n");
-		if (closesocket(SendSocket) == SOCKET_ERROR) {
-			printf("recvfrom() generated error %d\n", WSAGetLastError());
-		}
-		WSACleanup();
 		exit(0);
 	}
 
 	FixedDNSheader *Recv_fdh = (FixedDNSheader*)recv_buf;
+	
+	if (ntohs(Recv_fdh->ID!=fdh->ID)) {
+		printf("ID did not match send address. Exit\n");
+		exit(0);
+	}
 
 	printf("TXID 0x%X, flags 0x%X, questions %d, answers %d, authority %d, additional %d\n",
 		ntohs(Recv_fdh->ID), ntohs(Recv_fdh->flags), ntohs(Recv_fdh->nQuestions),
 		ntohs(Recv_fdh->nAnswers), ntohs(Recv_fdh->nAuthority),
 		ntohs(Recv_fdh->nAdditional));
 
-	// my question + Query + frr  + answer
+
+	
 	FixedRR *frr = (FixedRR*)(recv_buf + pkt_size);
 
 	//printf("qC:%d,TTL:%d,len:%d\n", ntohs(frr->qC), ntohs(frr->TTL), ntohs(frr->len));
 
-	u_char* answer = (u_char*)(frr + 1);
-
-	if (int(answer) >= 0xC0)
-		printf("gonna jump\n");
-	else
-		printf("not gonna jump");
-
-	//printf("recv_buf: %s\n", recv_buf);
+	u_char* answer = (u_char*)(Recv_fdh + 1);
 
 	//need to do
-	//apply recursive serving
-	//find respond (error)
+	u_char* temp = printQuestion(answer);
 	
+	//jumpNoutput(temp);
 	//
 
-	return 0;
+			return 0;
 }

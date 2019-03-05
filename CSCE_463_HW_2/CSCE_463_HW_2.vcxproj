@@ -119,7 +119,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="mysocket.h" />
+    <ClInclude Include="struct.h" />
     <ClInclude Include="stdafx.h" />
   </ItemGroup>
   <ItemGroup>

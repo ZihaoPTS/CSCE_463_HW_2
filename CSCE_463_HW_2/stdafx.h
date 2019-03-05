@@ -5,7 +5,8 @@
 #include "stdlib.h"
 #include <cstring>
 #include <string>
-#include "mysocket.h"
+#include <ctime>
+#include "struct.h"
 #pragma comment(lib, "Ws2_32.lib")
 
 /* DNS query types */
