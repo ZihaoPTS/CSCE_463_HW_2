@@ -1,20 +1,6 @@
 #pragma once
 #include "stdafx.h"
 
-class Socket {
-	SOCKET sock; // socket handle
-	int allocatedSize; // bytes allocated for buf
-	int curPos; // current position in buffer
-public:
-	char *buf = NULL; // current buffer
-	Socket(void) {};
-	//bool Read(myURL url);
-	~Socket() {
-		if (buf != NULL)
-			delete buf;
-	};
-};
-
 #pragma pack(push,1)
 struct QueryHeader {
 	USHORT qType;
@@ -30,10 +16,17 @@ struct FixedDNSheader {
 	USHORT nAdditional;
 };
 
-class DNSanswerHdr {
-	USHORT type;
-	USHORT DNSclass;
-	USHORT ttl;
+struct DNSanswerHdr {
+	USHORT qT;
+	USHORT qC;
+	USHORT TTL;
 	USHORT len;
+};
+
+struct FixedRR {
+	u_short qT;
+	u_short qC;
+	int TTL;
+	u_short len;
 };
 #pragma pack(pop)

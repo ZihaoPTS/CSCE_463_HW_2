@@ -31,7 +31,7 @@
 
 #define DNS_STDQUERY	(0 << 11) /* opcode - 4 bits */
 
-#define DNS_AA			(1 << 10) /* authoritative answer */
-#define NS_TC			(1 << 9) /* truncated */
-#define DNS_RD			(1 << 8) /*recursion desired*/
-#define DNS_RA			(1 << 7) /*recursion available*/
+#define DNS_AA			(1 << 10)	/* authoritative answer */
+#define NS_TC			(1 << 9)	/* truncated */
+#define DNS_RD			(1 << 8)	/* recursion desired*/
+#define DNS_RA			(1 << 7)	/* recursion available*/
