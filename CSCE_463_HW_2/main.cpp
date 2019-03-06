@@ -61,82 +61,49 @@ void printQType(u_short qT) {
 	
 }
 
-u_char* jumpNoutput(u_char* answer) { // returning a pointer at next answer
-	u_char* ans = answer;
-	int curPos = 0;
+int printQuestion(u_char* recv_buf, int offset, bool print) { // returning a pointer at next answer
+	int curPos = offset;
 	int pnj = 0; //position next to jump
 	int off = 0;
 	bool jumped = false;
+	bool first = false;
 	//print answer_name
 	while(true){
-		if (answer[curPos] >= 0xc0) {
-			off = ((answer[curPos] & 0x3F) << 8) + answer[curPos + 1];
-			curPos += off;
-			pnj = curPos+2;
+		if (recv_buf[curPos] >= 0xc0) {
+			off = ((recv_buf[curPos] & 0x3F) << 8) + recv_buf[curPos + 1];
+			if (!jumped)
+				pnj = curPos + 2;
+			curPos = off;
 			jumped = true;
 		}
-		else if (answer[curPos] == 0) {
+		else if (recv_buf[curPos] == 0) {
 			if (jumped){
 				curPos = pnj;
-				jumped = false;
+				return curPos;
 			}
-			else
-				break;
+			else {
+				curPos += 1;
+				return curPos;
+			}
 		}
 		else {
-			int count = answer[curPos];
-			curPos += 1;
+			if (print&first)
+				printf(".");
+			else
+				first = true;
+			int count = recv_buf[curPos];
+			curPos ++;
 			for (int i = 0; i < count; i++) {
-				printf("%c", answer[curPos]);
+				if(print)
+					printf("%c", recv_buf[curPos]);
 				curPos++;
 			}
-			printf(".");
 		}
 
 	}
 	
 	//compute FixedRR, print Qtype
-	ans += (curPos+2);
-	FixedRR* frr = (FixedRR*)ans;
-	ans = (u_char*)(frr + 1);
-	printQType(ntohs(frr->qT));
-	return ans;
-}
-
-u_char* printQuestion(u_char* question) {
-	u_char* answer = question;
-	int curPos = 0;
-	int off = 0;
-	int pnj = 0;
-	bool jumped = false;
-	while (true) {
-		if (answer[curPos] >= 0xc0) {
-			off = ((answer[curPos] & 0x3F) << 8) + answer[curPos + 1];
-			curPos += off;
-			pnj = curPos + 2;
-			jumped = true;
-		}
-		else if (answer[curPos] == 0) {
-			if (jumped) {
-				curPos = pnj;
-				jumped = false;
-			}
-			else
-				break;
-		}
-		else {
-			int count = answer[curPos];
-			curPos += 1;
-			for (int i = 0; i < count; i++) {
-				printf("%c", answer[curPos]);
-				curPos++;
-			}
-			printf(".");
-		}
-
-	}
-	answer += (curPos+1);
-	return answer;
+	//if(nev_jumped)
 }
 
 void makeRDNSquestion(char* buf, char* host) {
@@ -306,7 +273,7 @@ int main(int argc, char** argv) {
 			WSACleanup();
 			exit(0);
 		}
-		printf("Max Attempt Reached. No select evoke successfully. Exiting Program\n");
+		printf("\tMax Attempt Reached. No select evoke successfully. Exiting Program\n");
 		if (closesocket(SendSocket) == SOCKET_ERROR) {
 			printf("recvfrom() generated error %d\n", WSAGetLastError());
 		}
@@ -322,35 +289,140 @@ int main(int argc, char** argv) {
 	WSACleanup();
 
 	if (RecvAddr.sin_addr.s_addr != remote.sin_addr.s_addr || RecvAddr.sin_port != remote.sin_port){
-		printf("Reply address did not match send address. Exit\n");
+		printf("\tReply address did not match send address. Exit\n");
 		exit(0);
 	}
 
 	FixedDNSheader *Recv_fdh = (FixedDNSheader*)recv_buf;
 	
 	if (ntohs(Recv_fdh->ID!=fdh->ID)) {
-		printf("ID did not match send address. Exit\n");
+		printf("\tID did not match send address. Exit\n");
 		exit(0);
 	}
 
-	printf("TXID 0x%X, flags 0x%X, questions %d, answers %d, authority %d, additional %d\n",
-		ntohs(Recv_fdh->ID), ntohs(Recv_fdh->flags), ntohs(Recv_fdh->nQuestions),
-		ntohs(Recv_fdh->nAnswers), ntohs(Recv_fdh->nAuthority),
-		ntohs(Recv_fdh->nAdditional));
+	int nQuestions = ntohs(Recv_fdh->nQuestions);
+	int nAnswers = ntohs(Recv_fdh->nAnswers);
+	int nAuthority = ntohs(Recv_fdh->nAuthority);
+	int nAdditional = ntohs(Recv_fdh->nAdditional);
+	int flag = ntohs(Recv_fdh->flags);
+	int RRrecord = (flag & 0b1111);
+		
 
+	printf("\tTXID 0x%X, flags 0x%X, questions %d, answers %d, authority %d, additional %d\n",
+		ntohs(Recv_fdh->ID), ntohs(Recv_fdh->flags), nQuestions,
+		nAnswers, nAuthority,nAdditional);
+	if (RRrecord != 0){
+		printf("failed with Rcode = %d \n", RRrecord);
+		exit(0);
+	}
+	else
+		printf("Succeed with Rcode = 0 \n");
 
-	
-	FixedRR *frr = (FixedRR*)(recv_buf + pkt_size);
+	int offset = sizeof(FixedDNSheader);
+	u_char* recv_buf_u = (u_char*)recv_buf;
+	printf("\t------------ [questions] ---------- \n");
+	for (int i = 0; i < nQuestions; i++) {
+		offset = printQuestion(recv_buf_u, offset,true);
+		QueryHeader* QHans = (QueryHeader*)(recv_buf_u + offset);
+		printf(" type %d class %d \n",ntohs(QHans->qType),ntohs(QHans->qClass));
+		offset += sizeof(QueryHeader);
+	}	
+	printf("\t------------ [Answers] ---------- \n");
+	for (int i = 0; i < nAnswers; i++) {
+		offset = printQuestion(recv_buf_u, offset,true);//print name
+		FixedRR* QHans = (FixedRR*)(recv_buf_u + offset);
+		u_short QType = ntohs(QHans->qT);
+		printQType(QType);
+		offset += sizeof(FixedRR);
+		if (QType == DNS_NS | QType == DNS_CNAME | QType == DNS_PTR) {
+			offset = printQuestion(recv_buf_u, offset,true);
+			//print name
+		}
+		else if (QType == DNS_A) {
+			//print IP
+			bool first = false;
+			for (int i = 0; i < ntohs(QHans->len); i++) {
+				if (first)
+					printf(".");
+				else
+					first = true;
+				printf("%d", recv_buf_u[offset]);
+				offset++;
+			}
+		}
+		else {
+			offset = printQuestion(recv_buf_u, offset, false);
+			printf(" Type not desired. Skip\n");
+			continue;
+		}
+		printf(" TTL = %d \n", ntohs(QHans->TTL));
+	}
+	printf("\t------------ [nAuthority] ---------- \n");
+	for (int i = 0; i < nAuthority; i++) {
+		offset = printQuestion(recv_buf_u, offset, true);//print name
+		FixedRR* QHans = (FixedRR*)(recv_buf_u + offset);
+		u_short QType = ntohs(QHans->qT);
+		printQType(QType);
+		offset += sizeof(FixedRR);
+		if (QType == DNS_NS | QType == DNS_CNAME | QType == DNS_PTR) {
+			offset = printQuestion(recv_buf_u, offset, true);
+			//print name
+		}
+		else if (QType == DNS_A) {
+			//print IP
+			bool first = false;
+			for (int i = 0; i < ntohs(QHans->len); i++) {
+				if (first)
+					printf(".");
+				else
+					first = true;
+				printf("%d", recv_buf_u[offset]);
+				offset++;
+			}
+		}
+		else {
+			offset = printQuestion(recv_buf_u, offset, false);
+			printf(" Type not desired. Skip\n");
+			continue;
+		}
+		printf(" TTL = %d \n", ntohs(QHans->TTL));
+	}	
 
-	//printf("qC:%d,TTL:%d,len:%d\n", ntohs(frr->qC), ntohs(frr->TTL), ntohs(frr->len));
+	printf("\t------------ [nAdditional] ---------- \n");
+	for (int i = 0; i < nAdditional; i++) {
+		offset = printQuestion(recv_buf_u, offset, true);//print name
+		FixedRR* QHans = (FixedRR*)(recv_buf_u + offset);
+		u_short QType = ntohs(QHans->qT);
+		printQType(QType);
+		offset += sizeof(FixedRR);
+		if (QType == DNS_NS | QType == DNS_CNAME | QType == DNS_PTR) {
+			offset = printQuestion(recv_buf_u, offset, true);
+			//print name
+		}
+		else if (QType == DNS_A) {
+			//print IP
+			bool first = false;
+			for (int i = 0; i < ntohs(QHans->len); i++) {
+				if (first)
+					printf(".");
+				else
+					first = true;
+				printf("%d", recv_buf_u[offset]);
+				offset++;
+			}
+		}
+		else {
+			offset = printQuestion(recv_buf_u, offset, false);
+			printf(" Type not desired. Skip\n");
+			continue;
+		}
+		printf(" TTL = %d \n", ntohs(QHans->TTL));
+	}
 
-	u_char* answer = (u_char*)(Recv_fdh + 1);
+	//known bugs:
 
-	//need to do
-	u_char* temp = printQuestion(answer);
-	
-	//jumpNoutput(temp);
-	//
+	//your TTL is fucked
+	//handling AAAA or other unknown types
 
-			return 0;
+	return 0;
 }

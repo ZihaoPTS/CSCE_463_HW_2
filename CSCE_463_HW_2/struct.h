@@ -16,13 +16,6 @@ struct FixedDNSheader {
 	USHORT nAdditional;
 };
 
-struct DNSanswerHdr {
-	USHORT qT;
-	USHORT qC;
-	USHORT TTL;
-	USHORT len;
-};
-
 struct FixedRR {
 	u_short qT;
 	u_short qC;
